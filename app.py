@@ -18,7 +18,7 @@ class User:
 
 
 def create_flask_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='', static_folder="static")
     with app.app_context():
         pass
     return app
@@ -94,6 +94,7 @@ def _get_authenticated_user(con, username: str, pw_hash: str) -> User:
 
 
 def _print_users():
+    print("Users:")
     res = get_user_db().cursor().execute("SELECT * FROM user;")
     for row in res.fetchall():
         print(row)
@@ -119,9 +120,9 @@ def login_user():
 
 
 @app.route("/", methods=["GET"])
-def hello_world():
+def serve_homepage():
     _print_users()
-    return "Hello World!", 200
+    return app.send_static_file("index.html")
 
 
 if __name__ == '__main__':
