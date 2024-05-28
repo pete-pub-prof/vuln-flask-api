@@ -3,10 +3,9 @@ import os
 import sqlite3
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, request, g
+# from flask_api import status
 from dataclasses import dataclass
-
-app = Flask(__name__)
 
 
 @dataclass
@@ -38,7 +37,7 @@ class UserDatabase:
         """)
         self.con.commit()
 
-    def _destroy_user_database(self):
+    def destroy_user_database(self):
         self.cursor.execute("DELETE FROM user")
         self.cursor.execute("DROP TABLE user")
         self.cursor.close()
@@ -85,9 +84,16 @@ class UserDatabase:
     def __enter__(self):
         return self
 
+    def close_connection(self):
+        self.con.commit()
+        self.cursor.close()
+        self.con.close()
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
-            self._destroy_user_database()
+            self.con.commit()
+            self.con.close()
+            # self.destroy_user_database()
         except Exception as e:
             print("Error Destroying User Database")
             print(e)
@@ -95,10 +101,49 @@ class UserDatabase:
             print(f"Destroyed User Database: {self.db_file}")
 
 
-@app.route('/')
-def hello_world():  # put application's code here
-    return 'Hello World!'
+def init_app() -> Flask:
+    app = Flask(__name__)
+    app.config["user_db"] = UserDatabase("user_database.db")
+    with app.app_context():
+        g.db = UserDatabase("user.db")
+    return app
+
+
+def get_user_db() -> UserDatabase:
+    if 'db' not in g:
+        g.db = UserDatabase("user.db")
+    return g.db
+
+
+app = init_app()
+
+
+@app.route('/user', methods=["POST"])
+def create_user():  # put application's code here
+    username: str = request.form["username"]
+    password: str = request.form["password"]
+    user = get_user_db().add(username, password)
+    return {"id": user.id, "username": user.username}
+
+
+@app.route("/user/login", methods=["POST"])
+def login_user():
+    username: str = request.form["username"]
+    password: str = request.form["password"]
+    try:
+        user = get_user_db().get_authenticated_user(username, password)
+    except ValueError as e:
+        return {"error": "Authentication Failed"}, 401
+
+
+@app.route("/", methods=["GET"])
+def hello_world():
+    get_user_db()._print_users()
+    return "Hello World!", 200
 
 
 if __name__ == '__main__':
-    app.run()
+    try:
+        app.run()
+    finally:
+        get_user_db().destroy_user_database()
